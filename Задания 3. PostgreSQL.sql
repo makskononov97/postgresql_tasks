@@ -43,3 +43,48 @@ select customer_id, payment_date, amount
 		   left join payment p on p.rental_id = r.rental_id ) t
  where rn = 1
  order by customer_id;
+
+/*Задание 5. С помощью оконной функции выведите для каждого сотрудника сумму продаж за август 2005 года с нарастающим итогом по каждому 
+             сотруднику и по каждой дате продажи (без учёта времени) с сортировкой по дате.*/
+select * from (
+select s.staff_id, p.payment_date::date,
+       sum(amount) over (partition by p.staff_id order by payment_date::date asc) as step_sum
+  from public.staff s 
+  join payment p on p.staff_id = s.staff_id 
+ where extract ( year from p.payment_date) = 2005 
+   and extract ( month from p.payment_date) = 8) t
+ group by staff_id, payment_date, step_sum
+ order by staff_id, payment_date;
+ 
+
+/*Задание 6. 20 августа 2005 года в магазинах проходила акция: покупатель каждого сотого платежа получал дополнительную скидку 
+             на следующую аренду. С помощью оконной функции выведите всех покупателей, которые в день проведения акции получили скидку.*/
+select customer_id from (
+select c.customer_id, p.payment_date, row_number () over (order by  payment_id) as rn 
+  from customer c 
+  join payment p on c.customer_id = p.customer_id 
+ where p.payment_date::date = '2005-08-20') t 
+where rn % 100 = 0;
+
+
+/*Задание 7. Для каждой страны определите и выведите одним SQL-запросом покупателей, которые попадают под условия:
+•  покупатель, арендовавший наибольшее количество фильмов;
+•  покупатель, арендовавший фильмов на самую большую сумму;
+•  покупатель, который последним арендовал фильм.*/
+
+select * from ( 
+select c.country_id, c.country,
+       first_value (c3.customer_id) over (partition by c.country_id, country order by count(*) desc) as customer_rent_max_films, 
+       first_value (c3.customer_id) over (partition by c.country_id, country order by sum(f.rental_rate) desc) as customer_rent_max_sum, 
+       first_value (c3.customer_id) over (partition by c.country_id, country order by max (r.rental_date) desc) as customer_last_rent
+  from country c 
+  join city c2 on c2.country_id = c.country_id 
+  join address a on a.city_id = c2.city_id 
+  join customer c3 on c3.address_id = a.address_id 
+  join rental r on r.customer_id = c3.customer_id 
+  join inventory i on i.inventory_id = r.inventory_id
+  join film f on f.film_id = i.film_id
+group by c.country_id, c.country, c3.customer_id
+) t
+group by country_id, country, customer_rent_max_films, customer_rent_max_sum, customer_last_rent
+order by country_id;
